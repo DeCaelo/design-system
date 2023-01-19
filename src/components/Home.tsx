@@ -1,7 +1,10 @@
 import { useEffect, useState } from 'react';
 import { Text } from './ ui/Text';
 
-function getAutocompleteResults(query: string): Promise<string[]> {
+function getAutocompleteResults(
+  query: string,
+  signal?: AbortSignal
+): Promise<string[]> {
   const fruits = [
     'Apple',
     'Apricot',
@@ -41,6 +44,9 @@ function getAutocompleteResults(query: string): Promise<string[]> {
 
   return new Promise((resolve, reject) => {
     setTimeout(() => {
+      if (signal?.aborted) {
+        reject(signal.reason);
+      }
       resolve(
         fruits.filter((fruit) =>
           fruit.toLowerCase().includes(query.toLowerCase())
@@ -50,20 +56,43 @@ function getAutocompleteResults(query: string): Promise<string[]> {
   });
 }
 
+function useDebounceValue(value: string, time = 250) {
+  const [debounceValue, setDebounceValue] = useState(value);
+
+  useEffect(() => {
+    const timeout = setTimeout(() => {
+      setDebounceValue(value);
+    }, time);
+
+    return () => {
+      clearTimeout(timeout);
+    };
+  }, [value, time]);
+
+  return debounceValue;
+}
+
 function Home() {
   const [query, setQuery] = useState('');
   const [suggestions, setSuggestions] = useState<string[]>([]);
+  const debounceQuery = useDebounceValue(query);
+  const controller = new AbortController();
 
   useEffect(() => {
+    const signal = controller.signal;
+
     if (!query) {
       setSuggestions([]);
       return;
     }
+
     (async () => {
-      const data = await getAutocompleteResults(query);
+      const data = await getAutocompleteResults(debounceQuery, signal);
       setSuggestions(data);
     })();
-  }, [query]);
+
+    return () => controller.abort('cancel request');
+  }, [debounceQuery]);
 
   return (
     <div className="w-full h-screen flex flex-col items-center bg-gray-900">
